@@ -1,0 +1,19 @@
+{
+  "name": "obs-dashboard-websocket",
+  "version": "1.0.0",
+  "description": "A web-based remote control for OBS Studio using the OBS WebSocket plugin",
+  "license": "ISC",
+  "author": "antiparty",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "obs-websocket-js": "^5.0.6",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {}
+}
