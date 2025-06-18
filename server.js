@@ -107,7 +107,7 @@ async function handleOBSCall(res, obsMethod, params = {}) {
     return result;
   } catch (error) {
     console.error("OBS operation failed:", error);
-    isConnected = false; // Assume connection is bad after error
+    isConnected = false;
     throw error;
   } finally {
     checkIdleAndDisconnect();
@@ -174,100 +174,161 @@ app.get("/api/scenes", async (req, res) => {
   }
 });
 
+app.get("/api/audio-levels", async (req, res) => {
+  try {
+    const inputs = await handleOBSCall(res, "GetInputList");
+    const levels = {};
+
+    for (const input of inputs.inputs) {
+      try {
+        // Check if input supports audio first
+        await handleOBSCall(res, "GetInputAudioTracks", {
+          inputName: input.inputName,
+        });
+        
+        // Only proceed if input supports audio
+        const { inputLevels } = await handleOBSCall(res, "GetInputAudioMonitor", {
+          inputName: input.inputName,
+        });
+        levels[input.inputName] = inputLevels?.[0]?.[0] || 0; // Get peak level
+      } catch (error) {
+        // Skip non-audio inputs
+        continue;
+      }
+    }
+
+    res.json(levels);
+  } catch (error) {
+    res.json({});
+  }
+});
+
 app.get("/api/sources/:sceneName", async (req, res) => {
   try {
     const { sceneName } = req.params;
 
-    // 1. Verify scene exists and get its type (regular scene or group)
+    // Verify scene exists and get its type (regular scene or group)
     const sceneList = await handleOBSCall(res, "GetSceneList");
     const groupList = await handleOBSCall(res, "GetGroupList");
-    
-    // Extract scene names and group names correctly
-    const sceneNames = sceneList.scenes.map(scene => scene.sceneName);
+    const inputs = await handleOBSCall(res, "GetInputList"); // Get all audio inputs
+    const audioSources = [];
+
+    const sceneNames = sceneList.scenes.map((scene) => scene.sceneName);
     const groupNames = groupList.groups || [];
-    
+
     const isGroup = groupNames.includes(sceneName);
     const sceneExists = sceneNames.includes(sceneName) || isGroup;
-    
+
     if (!sceneExists) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: "Scene/Group not found",
         availableScenes: sceneNames,
-        availableGroups: groupNames
+        availableGroups: groupNames,
       });
     }
 
-    // 2. Get scene/group items using the appropriate method
-    const itemsResponse = isGroup 
+    // Get scene/group items
+    const itemsResponse = isGroup
       ? await handleOBSCall(res, "GetGroupSceneItemList", { sceneName })
       : await handleOBSCall(res, "GetSceneItemList", { sceneName });
 
     const sceneItems = itemsResponse.sceneItems;
-
-    // 3. Process items and identify nested groups
     const processedSources = [];
     const groupPromises = [];
 
+    // Gather audio sources
+    for (const input of inputs.inputs) {
+      try {
+        const inputInfo = await handleOBSCall(res, "GetInputAudioTracks", {
+          inputName: input.inputName,
+        }).catch(() => null);
+
+        if (inputInfo) {
+          const volume = await handleOBSCall(res, "GetInputVolume", {
+            inputName: input.inputName,
+          });
+          const muted = await handleOBSCall(res, "GetInputMute", {
+            inputName: input.inputName,
+          });
+
+          audioSources.push({
+            id: input.inputId || Date.now(),
+            name: input.inputName,
+            type: input.inputKind,
+            volume: volume.inputVolumeMul,
+            muted: muted.inputMuted,
+            isAudio: true,
+          });
+        }
+      } catch (err) {
+        console.warn(
+          `Skipping non-audio input "${input.inputName}":`,
+          err.message
+        );
+      }
+    }
+
     for (const item of sceneItems) {
-      // Skip items that are part of a group (we'll handle them with their parent)
       if (item.parentGroupName) continue;
 
       if (item.isGroup || item.sourceType === "OBS_SOURCE_TYPE_GROUP") {
-        // Process group contents
         groupPromises.push(
-          handleOBSCall(res, "GetGroupSceneItemList", { sceneName: item.sourceName })
+          handleOBSCall(res, "GetGroupSceneItemList", {
+            sceneName: item.sourceName,
+          })
             .then(({ sceneItems: groupItems }) => ({
               id: item.sceneItemId,
               name: item.sourceName,
               type: "group",
               visible: item.sceneItemEnabled,
-              items: groupItems.map(i => ({
+              items: groupItems.map((i) => ({
                 id: i.sceneItemId,
                 name: i.sourceName,
                 type: i.sourceType,
                 visible: i.sceneItemEnabled,
                 isGroupItem: true,
-                parentGroup: item.sourceName
-              }))
+                parentGroup: item.sourceName,
+              })),
             }))
-            .catch(error => {
-              console.error(`Error processing group ${item.sourceName}:`, error);
+            .catch((error) => {
+              console.error(
+                `Error processing group ${item.sourceName}:`,
+                error
+              );
               return {
                 id: item.sceneItemId,
                 name: item.sourceName,
                 type: "group",
                 visible: item.sceneItemEnabled,
                 items: [],
-                error: "Failed to load group contents"
+                error: "Failed to load group contents",
               };
             })
         );
       } else {
-        // Regular item
         processedSources.push({
           id: item.sceneItemId,
           name: item.sourceName,
           type: item.sourceType,
-          visible: item.sceneItemEnabled
+          visible: item.sceneItemEnabled,
         });
       }
     }
 
-    // 4. Wait for all groups to process and add to sources
     const groupResults = await Promise.all(groupPromises);
     processedSources.push(...groupResults);
 
+    // Send combined response
     res.json({
-      sources: processedSources,
+      sources: [...processedSources, ...audioSources],
       sceneName,
-      isGroup
+      isGroup,
     });
-
   } catch (error) {
     console.error("Error in /api/sources:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: error.message,
-      details: "Failed to get scene/group sources" 
+      details: "Failed to get scene/group sources",
     });
   }
 });

@@ -78,6 +78,90 @@ function updateStatusUI() {
   }
 }
 
+function renderSources(sources, sceneName) {
+  sourcesContainerEl.innerHTML = `
+    <h5 class="mb-3">${sceneName}</h5>
+    <div class="audio-mixer-container mb-4">
+      <h6>Audio Mixer</h6>
+      <div id="audioMixer"></div>
+    </div>
+    <div id="sourceList"></div>
+  `;
+
+  const audioMixerEl = document.getElementById("audioMixer");
+  const sourceListEl = document.getElementById("sourceList");
+
+  // Render audio sources first
+  sources.filter(source => source.isAudio).forEach(source => {
+    renderAudioSource(source, audioMixerEl);
+  });
+
+  // Render non-audio sources
+  sources.filter(source => !source.isAudio).forEach(source => {
+    if (source.items) renderGroup(source, sceneName, sourceListEl);
+    else renderSource(source, sceneName, sourceListEl);
+  });
+}
+
+function renderAudioSource(source, container) {
+  const audioSourceEl = document.createElement("div");
+  audioSourceEl.className = "audio-source";
+
+  audioSourceEl.innerHTML = `
+    <div class="audio-source-info">
+      <div class="audio-source-name">${source.name}</div>
+      <div class="audio-source-type small text-muted">${source.type}</div>
+    </div>
+    <div class="audio-controls">
+      <button class="btn btn-sm mute-btn ${source.muted ? "btn-danger" : "btn-outline-secondary"}" 
+              data-id="${source.id}" data-source="${source.name}">
+        <i class="bi ${source.muted ? "bi-volume-mute-fill" : "bi-volume-up-fill"}"></i>
+      </button>
+      <input type="range" class="form-range volume-slider" min="0" max="2" step="0.01" 
+             value="${source.volume || 1}" 
+             data-id="${source.id}" data-source="${source.name}">
+      <span class="volume-value small">${Math.round((source.volume || 1) * 100)}%</span>
+      <div class="audio-meter">
+        <div class="audio-meter-level" style="width: 0%"></div>
+      </div>
+    </div>
+  `;
+
+  // Add event listeners
+  const muteBtn = audioSourceEl.querySelector(".mute-btn");
+  const volumeSlider = audioSourceEl.querySelector(".volume-slider");
+  const volumeValue = audioSourceEl.querySelector(".volume-value");
+
+  muteBtn.addEventListener("click", () => toggleSourceMute(sceneName, source.id, source.name, !source.muted));
+  volumeSlider.addEventListener("input", (e) => {
+    volumeValue.textContent = `${Math.round(e.target.value * 100)}%`;
+  });
+  volumeSlider.addEventListener("change", (e) => {
+    setSourceVolume(sceneName, source.id, source.name, parseFloat(e.target.value));
+  });
+
+  container.appendChild(audioSourceEl);
+}
+
+async function updateAudioMeters() {
+  if (!obsConnected) return;
+
+  try {
+    const response = await fetch("/api/audio-levels");
+    const levels = await response.json();
+
+    document.querySelectorAll(".audio-meter-level").forEach((meter) => {
+      const sourceName = meter.closest(".audio-source").querySelector(".audio-source-name").textContent;
+      const level = levels[sourceName] || 0;
+      meter.style.width = `${Math.min(100, level * 100)}%`;
+      meter.style.backgroundColor = level > 0.9 ? "#dc3545" : level > 0.7 ? "#ffc107" : "#28a745";
+    });
+  } catch (error) {
+    console.error("Error updating audio meters:", error);
+  }
+}
+setInterval(updateAudioMeters, 100);
+
 // Connection Management
 async function checkOBSStatus() {
   try {
