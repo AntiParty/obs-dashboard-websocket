@@ -9,7 +9,7 @@ const app = express();
 const obs = new OBSWebSocket();
 
 const config = {
-  host: process.env.OBS_HOST || "1.1.1.1",
+  host: process.env.OBS_HOST || "localhost",
   port: process.env.OBS_PORT || 4455,
   password: process.env.OBS_PASSWORD || "test123",
   serverPort: process.env.SERVER_PORT || 2000,
@@ -185,11 +185,15 @@ app.get("/api/audio-levels", async (req, res) => {
         await handleOBSCall(res, "GetInputAudioTracks", {
           inputName: input.inputName,
         });
-        
+
         // Only proceed if input supports audio
-        const { inputLevels } = await handleOBSCall(res, "GetInputAudioMonitor", {
-          inputName: input.inputName,
-        });
+        const { inputLevels } = await handleOBSCall(
+          res,
+          "GetInputAudioMonitor",
+          {
+            inputName: input.inputName,
+          }
+        );
         levels[input.inputName] = inputLevels?.[0]?.[0] || 0; // Get peak level
       } catch (error) {
         // Skip non-audio inputs
@@ -207,10 +211,9 @@ app.get("/api/sources/:sceneName", async (req, res) => {
   try {
     const { sceneName } = req.params;
 
-    // Verify scene exists and get its type (regular scene or group)
     const sceneList = await handleOBSCall(res, "GetSceneList");
     const groupList = await handleOBSCall(res, "GetGroupList");
-    const inputs = await handleOBSCall(res, "GetInputList"); // Get all audio inputs
+    const inputs = await handleOBSCall(res, "GetInputList");
     const audioSources = [];
 
     const sceneNames = sceneList.scenes.map((scene) => scene.sceneName);
@@ -227,7 +230,6 @@ app.get("/api/sources/:sceneName", async (req, res) => {
       });
     }
 
-    // Get scene/group items
     const itemsResponse = isGroup
       ? await handleOBSCall(res, "GetGroupSceneItemList", { sceneName })
       : await handleOBSCall(res, "GetSceneItemList", { sceneName });
@@ -236,7 +238,7 @@ app.get("/api/sources/:sceneName", async (req, res) => {
     const processedSources = [];
     const groupPromises = [];
 
-    // Gather audio sources
+    // Collect audio sources
     for (const input of inputs.inputs) {
       try {
         const inputInfo = await handleOBSCall(res, "GetInputAudioTracks", {
@@ -261,10 +263,7 @@ app.get("/api/sources/:sceneName", async (req, res) => {
           });
         }
       } catch (err) {
-        console.warn(
-          `Skipping non-audio input "${input.inputName}":`,
-          err.message
-        );
+        console.warn(`Skipping non-audio input "${input.inputName}":`, err.message);
       }
     }
 
@@ -291,10 +290,7 @@ app.get("/api/sources/:sceneName", async (req, res) => {
               })),
             }))
             .catch((error) => {
-              console.error(
-                `Error processing group ${item.sourceName}:`,
-                error
-              );
+              console.error(`Error processing group ${item.sourceName}:`, error);
               return {
                 id: item.sceneItemId,
                 name: item.sourceName,
@@ -306,11 +302,28 @@ app.get("/api/sources/:sceneName", async (req, res) => {
             })
         );
       } else {
+        let x = 0;
+        let y = 0;
+
+        try {
+          const transform = await handleOBSCall(res, "GetSceneItemTransform", {
+            sceneName,
+            sceneItemId: item.sceneItemId,
+          });
+
+          x = transform.sceneItemTransform.positionX || 0;
+          y = transform.sceneItemTransform.positionY || 0;
+        } catch (err) {
+          console.warn(`Could not get position for ${item.sourceName}:`, err.message);
+        }
+
         processedSources.push({
           id: item.sceneItemId,
           name: item.sourceName,
           type: item.sourceType,
           visible: item.sceneItemEnabled,
+          x,
+          y,
         });
       }
     }
@@ -318,7 +331,6 @@ app.get("/api/sources/:sceneName", async (req, res) => {
     const groupResults = await Promise.all(groupPromises);
     processedSources.push(...groupResults);
 
-    // Send combined response
     res.json({
       sources: [...processedSources, ...audioSources],
       sceneName,
@@ -332,6 +344,7 @@ app.get("/api/sources/:sceneName", async (req, res) => {
     });
   }
 });
+
 
 app.get("/api/source-preview/:sourceName", async (req, res) => {
   try {
@@ -350,6 +363,50 @@ app.get("/api/source-preview/:sourceName", async (req, res) => {
       error: error.message,
       details: "Failed to get source preview",
     });
+  }
+});
+
+app.post("/api/set_position", async (req, res) => {
+  const { sceneName, sceneItemId, x, y } = req.body;
+
+  if (!sceneName || typeof sceneItemId !== "number") {
+    return res.status(400).json({ error: "Missing required data" });
+  }
+
+  try {
+    await handleOBSCall(res, "SetSceneItemTransform", {
+      sceneName,
+      sceneItemId,
+      sceneItemTransform: {
+        positionX: x,
+        positionY: y,
+      },
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Failed to set position:", error);
+    res.status(500).json({ error: "Failed to set position" });
+  }
+});
+
+app.post("/api/delete_source", async (req, res) => {
+  const { sceneName, sourceId } = req.body;
+
+  if (!sceneName || typeof sourceId !== "number") {
+    return res.status(400).json({ error: "Missing or invalid parameters" });
+  }
+
+  try {
+    await obs.call("RemoveSceneItem", {
+      sceneName,
+      sceneItemId: sourceId,
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Failed to delete source:", err.message || err);
+    res.status(500).json({ error: "Failed to delete source" });
   }
 });
 
@@ -442,8 +499,6 @@ app.get("/api/scene-previews", async (req, res) => {
         const { imageData } = await handleOBSCall(res, "GetSourceScreenshot", {
           sourceName: scene.sceneName,
           imageFormat: "png",
-          imageWidth: 320,
-          imageHeight: 180,
         });
 
         // Return the complete data URL
@@ -522,6 +577,48 @@ app.post("/api/recording", async (req, res) => {
     res.json({ status: "success", action });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/add_source", async (req, res) => {
+  const { sceneName, sourceName, inputKind, inputSettings = {} } = req.body;
+
+  try {
+    const result = await handleOBSCall(res, "CreateInput", {
+      sceneName,
+      inputName: sourceName,
+      inputKind,
+      inputSettings,
+      sceneItemEnabled: true,
+    });
+
+    res.json({ status: "success", result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/move_source", async (req, res) => {
+  const { sceneName, sourceId, x, y } = req.body;
+
+  if (!sceneName || typeof sourceId !== "number" || isNaN(x) || isNaN(y)) {
+    return res.status(400).json({ error: "Missing or invalid parameters" });
+  }
+
+  try {
+    await handleOBSCall(res, "SetSceneItemTransform", {
+      sceneName,
+      sceneItemId: sourceId,
+      sceneItemTransform: {
+        positionX: x,
+        positionY: y,
+      },
+    });
+
+    res.json({ success: true, moved: { sourceId, x, y } });
+  } catch (err) {
+    console.error("Failed to move source:", err.message || err);
+    res.status(500).json({ error: "Failed to move source", details: err.message });
   }
 });
 
