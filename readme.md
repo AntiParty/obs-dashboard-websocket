@@ -1,7 +1,6 @@
 # OBS Remote Control Web Interface
 
 ![OBS Remote Control Screenshot](/example.png)
-![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/AntiParty/obs-dashboard-websocket?utm_source=oss&utm_medium=github&utm_campaign=AntiParty%2Fobs-dashboard-websocket&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 A responsive web application for remotely controlling OBS Studio via its WebSocket API.
 
