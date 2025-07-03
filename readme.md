@@ -1,6 +1,6 @@
 # OBS Dashboard WebSocket
 
-![OBS Remote Control Screenshot](example.png)
+![OBS Remote Control Screenshot](/example.png)
 
 A modern, responsive web dashboard for remotely controlling [OBS Studio](https://obsproject.com/) via its WebSocket API. Manage scenes, sources, audio, and streaming/recording—all from your browser.
 
@@ -28,13 +28,20 @@ A modern, responsive web dashboard for remotely controlling [OBS Studio](https:/
   - Connection health checks
   - Status monitoring
 
+- **Multi-Profile Support**
+  - Save multiple OBS connection profiles per user (using localStorage)
+  - Easily switch between profiles
+
+- **Discord Webhook Notifications**
+  - Get notified in Discord when image folders are cleaned up
+
 ---
 
 ## 🛠️ Installation & Setup
 
 ### Prerequisites
 
-- Node.js v14 or newer
+- Node.js v18 or newer
 - OBS Studio v28+
 - OBS WebSocket plugin v5+ (usually bundled with OBS 28+)
 
@@ -61,6 +68,7 @@ OBS_HOST=localhost
 OBS_PORT=4455
 OBS_PASSWORD=yourpassword
 SERVER_PORT=2000
+DISCORD_WEBHOOK_URL=your_discord_webhook
 ```
 
 ### 4. Start the Server
@@ -79,6 +87,7 @@ Visit [http://localhost:2000](http://localhost:2000) in your browser.
 
 - **Main Dashboard:** Control scenes, sources, and audio from the main page.
 - **Studio Panel:** Advanced controls and layout editing via the "Open Studio Panel" button.
+- **Profile Management:** On first load, select or add an OBS connection profile.
 
 ---
 

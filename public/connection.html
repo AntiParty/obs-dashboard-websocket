@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Select OBS Connection</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"/>
+</head>
+<body class="container py-5">
+  <h2 class="mb-4">Select OBS Connection</h2>
+
+  <div id="profileList" class="mb-4"></div>
+
+  <h4>Add New Profile</h4>
+  <form id="addProfileForm" class="mb-4">
+    <input class="form-control mb-2" name="name" placeholder="Profile name" required />
+    <input class="form-control mb-2" name="ip" placeholder="IP Address (default: localhost)" />
+    <input class="form-control mb-2" name="port" type="number" placeholder="Port (default: 4455)" />
+    <input class="form-control mb-2" name="password" placeholder="Password" />
+    <button class="btn btn-primary">Save Profile</button>
+  </form>
+
+  <script>
+    const listDiv = document.getElementById("profileList");
+
+    function renderProfiles() {
+      const profiles = JSON.parse(localStorage.getItem("obsProfiles") || "[]");
+      listDiv.innerHTML = profiles.length
+        ? profiles.map((p, i) => `
+          <div class="d-flex justify-content-between align-items-center mb-2 border p-2">
+            <div>
+              <strong>${p.name}</strong><br />
+              ${p.ip || 'localhost'}:${p.port || 4455}
+            </div>
+            <div>
+              <button class="btn btn-sm btn-success" onclick="connect(${i})">Connect</button>
+              <button class="btn btn-sm btn-danger" onclick="remove(${i})">Delete</button>
+            </div>
+          </div>
+        `).join("")
+        : "<p>No profiles saved.</p>";
+    }
+
+    function connect(index) {
+      const profiles = JSON.parse(localStorage.getItem("obsProfiles") || "[]");
+      localStorage.setItem("activeOBSProfile", JSON.stringify(profiles[index]));
+      window.location.href = "index.html"; // or studio.html if that’s the main panel
+    }
+
+    function remove(index) {
+      const profiles = JSON.parse(localStorage.getItem("obsProfiles") || "[]");
+      profiles.splice(index, 1);
+      localStorage.setItem("obsProfiles", JSON.stringify(profiles));
+      renderProfiles();
+    }
+
+    document.getElementById("addProfileForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const newProfile = {
+        name: form.get("name"),
+        ip: form.get("ip"),
+        port: form.get("port"),
+        password: form.get("password")
+      };
+      const profiles = JSON.parse(localStorage.getItem("obsProfiles") || "[]");
+      profiles.push(newProfile);
+      localStorage.setItem("obsProfiles", JSON.stringify(profiles));
+      e.target.reset();
+      renderProfiles();
+    });
+
+    renderProfiles();
+  </script>
+</body>
+</html>

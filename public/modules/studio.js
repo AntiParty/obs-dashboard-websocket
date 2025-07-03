@@ -2,18 +2,51 @@ let currentScene = "";
 
 async function fetchScenes() {
   const res = await fetch("/api/scenes");
-  return (await res.json()).scenes || [];
+  if (!res.ok) {
+    console.error("Failed to fetch scenes:", await res.text());
+    return [];
+  }
+  try {
+    const data = await res.json();
+    return data.scenes || [];
+  } catch (e) {
+    console.error("Error parsing scenes JSON:", e);
+    return [];
+  }
 }
 
 async function fetchSources(sceneName) {
   const res = await fetch(`/api/sources/${encodeURIComponent(sceneName)}`);
-  return (await res.json()).sources || [];
+  if (!res.ok) {
+    const text = await res.text();
+    console.error(`Error loading sources for scene "${sceneName}":`, text);
+    return [];
+  }
+  try {
+    const data = await res.json();
+    return data.sources || [];
+  } catch (e) {
+    console.error("Error parsing sources JSON:", e);
+    return [];
+  }
 }
 
 async function fetchPreview(sceneName) {
-  const res = await fetch(`/api/source-preview/${sceneName}`);
-  const data = await res.json();
-  return data.preview;
+  const res = await fetch(
+    `/api/source-preview/${encodeURIComponent(sceneName)}`
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    console.error(`Error loading preview for scene "${sceneName}":`, text);
+    return "";
+  }
+  try {
+    const data = await res.json();
+    return data.preview || "";
+  } catch (e) {
+    console.error("Error parsing preview JSON:", e);
+    return "";
+  }
 }
 
 function renderSources(sources) {
@@ -170,9 +203,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!scene) return;
 
     currentScene = scene;
+
     const sources = await fetchSources(scene);
     const preview = await fetchPreview(scene);
-    previewImage.src = preview || ""; // ✅ Fixed line
+
+    previewImage.src = preview || "";
+
     renderSources(sources);
     renderAudioMixer(sources);
   });
@@ -181,13 +217,42 @@ document.addEventListener("DOMContentLoaded", () => {
     .getElementById("refreshSources")
     .addEventListener("click", async () => {
       if (!currentScene) return;
+
+      // Trigger the server to save new screenshots for all scenes
+      const refreshRes = await fetch("/api/refresh-screenshots", {
+        method: "POST",
+      });
+      if (!refreshRes.ok) {
+        console.error(
+          "Failed to refresh screenshots:",
+          await refreshRes.text()
+        );
+        return;
+      }
+      const refreshData = await refreshRes.json();
+      console.log("Screenshots refreshed:", refreshData);
+
+      // Now reload sources and UI as before
       const sources = await fetchSources(currentScene);
       renderSources(sources);
       renderAudioMixer(sources);
+
+      // Refresh preview image from saved file path if available
+      const previewPath = refreshData.savedPaths[currentScene];
+      const previewImage = document.getElementById("scenePreviewImage");
+      if (previewPath) {
+        previewImage.src = previewPath + "?" + Date.now(); // cache bust
+      } else {
+        // fallback: fetch preview base64 (or clear)
+        const preview = await fetchPreview(currentScene);
+        previewImage.src = preview || "";
+      }
     });
 
   sourceList.addEventListener("click", async (e) => {
     const btn = e.target.closest("button");
+
+    if (!btn) return;
 
     if (btn.classList.contains("toggle")) {
       const visible = btn.dataset.visible === "true";
@@ -203,7 +268,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const id = parseInt(btn.dataset.id);
       const name = btn.dataset.name;
 
-      // Skip deletion if the source ID is not a number (e.g., audio-only sources)
       if (isNaN(id)) {
         alert(`"${name}" cannot be deleted because it is not a scene item.`);
         return;
@@ -259,7 +323,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-
 let layoutEditMode = false;
 const toggleLayoutBtn = document.getElementById("toggleLayoutBtn");
 const layoutEditor = document.getElementById("layoutEditor");
@@ -267,7 +330,9 @@ const layoutEditor = document.getElementById("layoutEditor");
 toggleLayoutBtn.addEventListener("click", async () => {
   layoutEditMode = !layoutEditMode;
   layoutEditor.style.display = layoutEditMode ? "block" : "none";
-  toggleLayoutBtn.textContent = layoutEditMode ? "Exit Layout Editor" : "Edit Layout";
+  toggleLayoutBtn.textContent = layoutEditMode
+    ? "Exit Layout Editor"
+    : "Edit Layout";
 
   if (layoutEditMode) {
     layoutEditor.innerHTML = "";
@@ -281,7 +346,9 @@ toggleLayoutBtn.addEventListener("click", async () => {
         src.items.forEach((item) => {
           if (
             !item.isAudio &&
-            (item.type === "browser_source" || item.type === "image_source" || item.type === "color_source")
+            (item.type === "browser_source" ||
+              item.type === "image_source" ||
+              item.type === "color_source")
           ) {
             flatSources.push({
               id: item.id,
@@ -313,7 +380,8 @@ toggleLayoutBtn.addEventListener("click", async () => {
 
       // Use saved position or fallback grid layout
       const xPos = typeof src.x === "number" ? src.x / 2 : (i % 10) * 110;
-      const yPos = typeof src.y === "number" ? src.y / 2 : Math.floor(i / 10) * 40;
+      const yPos =
+        typeof src.y === "number" ? src.y / 2 : Math.floor(i / 10) * 40;
 
       el.style.left = xPos + "px";
       el.style.top = yPos + "px";
@@ -324,8 +392,14 @@ toggleLayoutBtn.addEventListener("click", async () => {
   }
 });
 
+function refreshImagePreviews() {
+  fetch("/api/source-preview/:sourceName");
+}
+
 function makeDraggable(element, sourceId) {
-  let offsetX, offsetY, isDragging = false;
+  let offsetX,
+    offsetY,
+    isDragging = false;
 
   element.addEventListener("mousedown", (e) => {
     isDragging = true;
@@ -341,8 +415,14 @@ function makeDraggable(element, sourceId) {
     let x = e.clientX - parentRect.left - offsetX;
     let y = e.clientY - parentRect.top - offsetY;
 
-    x = Math.max(0, Math.min(x, layoutEditor.offsetWidth - element.offsetWidth));
-    y = Math.max(0, Math.min(y, layoutEditor.offsetHeight - element.offsetHeight));
+    x = Math.max(
+      0,
+      Math.min(x, layoutEditor.offsetWidth - element.offsetWidth)
+    );
+    y = Math.max(
+      0,
+      Math.min(y, layoutEditor.offsetHeight - element.offsetHeight)
+    );
 
     element.style.left = x + "px";
     element.style.top = y + "px";

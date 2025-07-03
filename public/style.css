@@ -36,6 +36,10 @@
   background-color: #dc3545;
 }
 
+.strong {
+  color: #fff;
+}
+
 #sceneSelect {
   width: 100%;
   padding: 8px;
@@ -123,6 +127,7 @@
 
 .source-info {
   flex-grow: 1;
+  color: #fff;
 }
 
 .form-switch .form-check-input {

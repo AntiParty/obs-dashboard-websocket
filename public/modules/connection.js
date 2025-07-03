@@ -2,6 +2,7 @@
 import { DOM, STATE } from './constants.js';
 import { loadScenes, loadScenePreviews } from './scenes.js';
 import { updateUI, updateScenePreview } from './ui.js';
+import { showProfileModal, getActiveProfile } from './profile.js';
 
 let checkInterval;
 
@@ -66,4 +67,17 @@ export function startStatusChecking() {
     clearInterval(heartbeatInterval);
     clearInterval(checkInterval);
   };
+}
+
+// On first load, require profile selection
+if (!getActiveProfile()) {
+  showProfileModal(() => location.reload());
+} else {
+  // Optionally, send profile to backend
+  const profile = getActiveProfile();
+  fetch('/api/save-obs-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip: profile.ip, port: profile.port, password: profile.password })
+  });
 }
