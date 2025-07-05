@@ -110,6 +110,7 @@ Visit [http://localhost:2000](http://localhost:2000) in your browser.
 | `/api/scene-previews`          | GET    | Get preview images for scenes| —                                               |
 | `/api/audio-levels`            | GET    | Get real-time audio levels   | —                                               |
 | `/api/verify-connection`       | GET    | Check OBS connection         | —                                               |
+| `/api/export-config`           | GET    | export of your OBS scenes    | -                                               |
 
 ---
 
