@@ -1,10 +1,16 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-module.exports = function(config, discordWebhookUrl, activeClients, obsConnections, obsManager) {
-  const express = require('express');
+module.exports = function (
+  config,
+  discordWebhookUrl,
+  activeClients,
+  obsConnections,
+  obsManager
+) {
+  const express = require("express");
   const router = express.Router();
-  const imgFolder = path.join(__dirname, '..', 'public', 'img');
+  const imgFolder = path.join(__dirname, "..", "public", "img");
 
   // Helper for API endpoints
   async function handleOBSCall(res, obsMethod, params = {}) {
@@ -13,8 +19,8 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       return result;
     } catch (error) {
       return res.status(503).json({
-        error: 'OBS not available',
-        details: error.message || 'Could not connect to OBS.'
+        error: "OBS not available",
+        details: error.message || "Could not connect to OBS.",
       });
     } finally {
       obsManager.disconnectIfIdle(activeClients);
@@ -53,13 +59,17 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
         response.scenes.map(async (scene) => {
           let preview = null;
           try {
-            const previewData = await handleOBSCall(res, "GetSourceScreenshot", {
-              sourceName: scene.sceneName,
-              imageFormat: "jpeg",
-              imageWidth: 320,
-              imageHeight: 180,
-              imageCompressionQuality: 70,
-            });
+            const previewData = await handleOBSCall(
+              res,
+              "GetSourceScreenshot",
+              {
+                sourceName: scene.sceneName,
+                imageFormat: "jpeg",
+                imageWidth: 320,
+                imageHeight: 180,
+                imageCompressionQuality: 70,
+              }
+            );
             preview = previewData.imageData;
           } catch (e) {
             // ignore
@@ -73,7 +83,21 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       );
       res.json({ scenes: scenesWithPreviews });
     } catch (error) {
-      res.status(500).json({ error: error.message, details: "Failed to get scenes from OBS" });
+      res
+        .status(500)
+        .json({
+          error: error.message,
+          details: "Failed to get scenes from OBS",
+        });
+    }
+  });
+
+  router.get("/active-scene", async (req, res) => {
+    try {
+      const result = await handleOBSCall(res, "GetCurrentProgramScene");
+      res.json({ activeScene: result.currentProgramSceneName });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -83,10 +107,18 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       const levels = {};
       for (const input of inputs.inputs) {
         try {
-          await handleOBSCall(res, "GetInputAudioTracks", { inputName: input.inputName });
-          const { inputLevels } = await handleOBSCall(res, "GetInputAudioMonitor", { inputName: input.inputName });
+          await handleOBSCall(res, "GetInputAudioTracks", {
+            inputName: input.inputName,
+          });
+          const { inputLevels } = await handleOBSCall(
+            res,
+            "GetInputAudioMonitor",
+            { inputName: input.inputName }
+          );
           levels[input.inputName] = inputLevels?.[0]?.[0] || 0;
-        } catch (error) { continue; }
+        } catch (error) {
+          continue;
+        }
       }
       res.json(levels);
     } catch (error) {
@@ -97,11 +129,17 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
   router.get("/sources/:sceneName", async (req, res) => {
     try {
       const { sceneName } = req.params;
-      if (!sceneName) return res.status(400).json({ error: "sceneName parameter missing" });
+      if (!sceneName)
+        return res.status(400).json({ error: "sceneName parameter missing" });
       const { scenes } = await handleOBSCall(res, "GetSceneList");
       const sceneExists = scenes.some((s) => s.sceneName === sceneName);
-      if (!sceneExists) return res.status(404).json({ error: `Scene \"${sceneName}\" not found` });
-      const { sceneItems } = await handleOBSCall(res, "GetSceneItemList", { sceneName });
+      if (!sceneExists)
+        return res
+          .status(404)
+          .json({ error: `Scene \"${sceneName}\" not found` });
+      const { sceneItems } = await handleOBSCall(res, "GetSceneItemList", {
+        sceneName,
+      });
       if (!sceneItems) return res.json({ sources: [] });
       const sources = sceneItems.map((item) => ({
         id: item.sceneItemId,
@@ -136,7 +174,12 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
         res.json({ preview: previewData.imageData });
       }
     } catch (error) {
-      res.status(500).json({ error: error.message, details: "Failed to get source preview" });
+      res
+        .status(500)
+        .json({
+          error: error.message,
+          details: "Failed to get source preview",
+        });
     }
   });
 
@@ -191,7 +234,10 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       return res.status(400).json({ error: "Missing or invalid parameters" });
     }
     try {
-      await obsManager.call("RemoveSceneItem", { sceneName, sceneItemId: sourceId });
+      await obsManager.call("RemoveSceneItem", {
+        sceneName,
+        sceneItemId: sourceId,
+      });
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to delete source" });
@@ -202,16 +248,32 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
     try {
       const { sceneName } = req.body;
       if (!sceneName) {
-        return res.status(400).json({ error: "sceneName is required", details: "Please provide a sceneName in the request body" });
+        return res
+          .status(400)
+          .json({
+            error: "sceneName is required",
+            details: "Please provide a sceneName in the request body",
+          });
       }
       const { scenes } = await handleOBSCall(res, "GetSceneList");
       if (!scenes.some((scene) => scene.sceneName === sceneName)) {
-        return res.status(404).json({ error: "Scene not found", details: `Scene \"${sceneName}\" does not exist in OBS` });
+        return res
+          .status(404)
+          .json({
+            error: "Scene not found",
+            details: `Scene \"${sceneName}\" does not exist in OBS`,
+          });
       }
       await handleOBSCall(res, "SetCurrentProgramScene", { sceneName });
-      res.json({ status: "success", scene: sceneName, message: `Successfully switched to scene: ${sceneName}` });
+      res.json({
+        status: "success",
+        scene: sceneName,
+        message: `Successfully switched to scene: ${sceneName}`,
+      });
     } catch (error) {
-      res.status(500).json({ error: error.message, details: "Failed to switch scene" });
+      res
+        .status(500)
+        .json({ error: error.message, details: "Failed to switch scene" });
     }
   });
 
@@ -228,7 +290,12 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       });
       res.json({ status: "success", sceneName, sourceName, sourceId, visible });
     } catch (error) {
-      res.status(500).json({ error: error.message, details: "Failed to toggle source visibility" });
+      res
+        .status(500)
+        .json({
+          error: error.message,
+          details: "Failed to toggle source visibility",
+        });
     }
   });
 
@@ -238,7 +305,10 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       if (action !== "start" && action !== "stop") {
         return res.status(400).json({ error: "Invalid action" });
       }
-      await handleOBSCall(res, action === "start" ? "StartStream" : "StopStream");
+      await handleOBSCall(
+        res,
+        action === "start" ? "StartStream" : "StopStream"
+      );
       res.json({ status: "success", action });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -276,20 +346,30 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
   router.post("/toggle_mute", async (req, res) => {
     try {
       const { sceneName, sourceName, sourceId, muted } = req.body;
-      await handleOBSCall(res, "SetInputMute", { inputName: sourceName, inputMuted: muted });
+      await handleOBSCall(res, "SetInputMute", {
+        inputName: sourceName,
+        inputMuted: muted,
+      });
       res.json({ status: "success", sceneName, sourceName, sourceId, muted });
     } catch (error) {
-      res.status(500).json({ error: error.message, details: "Failed to toggle mute" });
+      res
+        .status(500)
+        .json({ error: error.message, details: "Failed to toggle mute" });
     }
   });
 
   router.post("/set_volume", async (req, res) => {
     try {
       const { sceneName, sourceName, sourceId, volume } = req.body;
-      await handleOBSCall(res, "SetInputVolume", { inputName: sourceName, inputVolumeMul: volume });
+      await handleOBSCall(res, "SetInputVolume", {
+        inputName: sourceName,
+        inputVolumeMul: volume,
+      });
       res.json({ status: "success", sceneName, sourceName, sourceId, volume });
     } catch (error) {
-      res.status(500).json({ error: error.message, details: "Failed to set volume" });
+      res
+        .status(500)
+        .json({ error: error.message, details: "Failed to set volume" });
     }
   });
 
@@ -299,7 +379,10 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       if (action !== "start" && action !== "stop") {
         return res.status(400).json({ error: "Invalid action" });
       }
-      await handleOBSCall(res, action === "start" ? "StartRecord" : "StopRecord");
+      await handleOBSCall(
+        res,
+        action === "start" ? "StartRecord" : "StopRecord"
+      );
       res.json({ status: "success", action });
     } catch (error) {
       res.status(500).json({ error: error.message });
@@ -335,7 +418,9 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       });
       res.json({ success: true, moved: { sourceId, x, y } });
     } catch (err) {
-      res.status(500).json({ error: "Failed to move source", details: err.message });
+      res
+        .status(500)
+        .json({ error: "Failed to move source", details: err.message });
     }
   });
 
@@ -347,7 +432,9 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
       const url = `ws://${ip || config.host}:${port || config.port}`;
       await Promise.race([
         obsTest.connect(url, password || config.password),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Connection timeout")), 3000))
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Connection timeout")), 3000)
+        ),
       ]);
       await obsTest.disconnect();
       res.json({ connected: true });
@@ -358,14 +445,54 @@ module.exports = function(config, discordWebhookUrl, activeClients, obsConnectio
 
   // Logs endpoint
   router.get("/logs", (req, res) => {
-    const logPath = path.join(__dirname, '..', 'logs', 'server.log');
-    fs.readFile(logPath, 'utf8', (err, data) => {
+    const logPath = path.join(__dirname, "..", "logs", "server.log");
+    fs.readFile(logPath, "utf8", (err, data) => {
       if (err) {
-        return res.json({ logs: 'No logs found or error reading log file.' });
+        return res.json({ logs: "No logs found or error reading log file." });
       }
       res.json({ logs: data });
     });
   });
+
+  router.get("/export-config", async (req, res) => {
+    try {
+      const { scenes } = await handleOBSCall(res, "GetSceneList");
+      const sceneConfigs = [];
+
+      for (const scene of scenes) {
+        const sceneName = scene.sceneName;
+        if (!sceneName) continue;
+
+        const { sceneItems } = await handleOBSCall(res, "GetSceneItemList", {
+          sceneName: scene.sceneName,
+        });
+
+        const items = await Promise.all(
+          sceneItems.map(async (item) => {
+            const { sceneItemTransform } = await handleOBSCall(res, "GetSceneItemTransform", {
+              sceneName: sceneName,
+              sceneItemId: item.sceneItemId,
+            });
+
+            return {
+              ...item,
+              transform: sceneItemTransform,
+            };
+          })
+        );
+
+        sceneConfigs.push({
+          sceneName,
+          items,
+        });
+      }
+
+      res.json({ exportedAt: new Date(), scenes: sceneConfigs});
+    } catch (error) {
+      console.error("Export Error:", error);
+      res.status(500).json({ error: "Failed to export OBS config", details: error.message || 'Unknown error'});
+    }
+  })
 
   // --- End all routes ---
   return router;

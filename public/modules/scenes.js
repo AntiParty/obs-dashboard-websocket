@@ -149,6 +149,16 @@ export async function selectScene(sceneName) {
   }
 }
 
+export async function fetchAndDisplayActiveScene() {
+  try {
+    const res = await fetch('/api/active-scene');
+    const data = await res.json();
+    document.getElementById('obsActiveSceneName').textContent = data.activeScene || 'Unknown';
+  } catch (err) {
+    document.getElementById('obsActiveSceneName').textContent = 'Unavailable';
+  }
+}
+
 export async function switchScene() {
   const sceneName = DOM.sceneSelectEl.value;
   if (!sceneName) return;
@@ -172,6 +182,7 @@ export async function switchScene() {
     DOM.statusEl.textContent = data.message;
     DOM.statusEl.style.color = "green";
     selectScene(sceneName);
+    await fetchAndDisplayActiveScene();
   } catch (err) {
     console.error("Error switching scene:", err);
     DOM.statusEl.textContent = err.message;

@@ -2,7 +2,7 @@
 import { DOM, STATE } from './constants.js';
 import { startStatusChecking } from './connection.js';
 import { updateStatusUI } from './ui.js';
-import { switchScene, selectScene } from './scenes.js';
+import { switchScene, selectScene, fetchAndDisplayActiveScene } from './scenes.js';
 import { toggleStream, toggleRecording } from './/streaming.js';
 
 function setupEventListeners() {
@@ -16,6 +16,7 @@ function setupEventListeners() {
   DOM.streamBtnEl.addEventListener("click", toggleStream);
   DOM.recordBtnEl.addEventListener("click", toggleRecording);
 
+
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       if (window.statusCleanup) window.statusCleanup();
@@ -27,6 +28,7 @@ function setupEventListeners() {
 
 window.addEventListener("load", () => {
   setupEventListeners();
+  fetchAndDisplayActiveScene();
   window.statusCleanup = startStatusChecking();
   updateStatusUI(); // Initial UI update
 });
